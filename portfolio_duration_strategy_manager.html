@@ -1569,6 +1569,108 @@ function showTab(name){
   if(name==='matrix') refreshMatrix();
 }
 
+const SUPABASE_URL = 'https://cjwznmdecngiuywaiddh.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqd3pubWRlY25naXV5d2FpZGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNzU5ODQsImV4cCI6MjA5MTY1MTk4NH0.r3Sc83y2WJj55OctH90EmseP_dhNRc-IykaMX6wFH2o';
+
+async function saveToStorage(filename){
+  try {
+    const payload = {
+      filename: filename,
+      savedAt: new Date().toISOString(),
+      securities: window.SECURITIES_DATA,
+      lines: window.LINES_DATA,
+      portfolioDur: window.PORTFOLIO_DUR_DATA,
+      totalMV: window.TOTAL_MV_DATA,
+      isinCurrency: window._isinCurrency,
+      isinIssuer: window._isinIssuer,
+      currencyData: window._currencyData,
+      portDurAll: window._portDurAll,
+      portModDurAll: window._portModDurAll,
+      fxUSD: window._fxUSD,
+      fxEUR: window._fxEUR,
+      fxGBP: window._fxGBP,
+    };
+    const json = JSON.stringify(payload);
+    if(json.length > 4900000){ console.warn('Data too large'); return false; }
+    const res = await fetch(SUPABASE_URL + '/rest/v1/portfolio_data', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY,
+        'Prefer': 'resolution=merge-duplicates'
+      },
+      body: JSON.stringify({id:'main', data: payload, updated_at: new Date().toISOString()})
+    });
+    if(!res.ok){ const t = await res.text(); console.error('Supabase save error:', res.status, t); }
+    return res.ok;
+  } catch(e) {
+    console.error('Supabase save failed:', e.message || e);
+    return false;
+  }
+}
+
+async function loadFromStorage(){
+  try {
+    const res = await fetch(SUPABASE_URL + '/rest/v1/portfolio_data?id=eq.main&select=data,updated_at', {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_KEY
+      }
+    });
+    if(!res.ok) return false;
+    const rows = await res.json();
+    if(!rows || rows.length === 0 || !rows[0].data) return false;
+    const d = rows[0].data;
+    if(!d.securities || d.securities.length === 0) return false;
+    window.SECURITIES_DATA  = d.securities;
+    window.LINES_DATA       = d.lines;
+    window.PORTFOLIO_DUR_DATA = d.portfolioDur;
+    window.TOTAL_MV_DATA    = d.totalMV;
+    window._isinCurrency    = d.isinCurrency;
+    window._isinIssuer      = d.isinIssuer;
+    window._currencyData    = d.currencyData;
+    window._portDurAll      = d.portDurAll;
+    window._portModDurAll   = d.portModDurAll;
+    window._fxUSD           = d.fxUSD;
+    window._fxEUR           = d.fxEUR;
+    window._fxGBP           = d.fxGBP;
+    const savedAt = new Date(d.savedAt);
+    const dateStr = savedAt.toLocaleDateString() + ' ' + savedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    applyUploadedData(d.filename, dateStr);
+    return true;
+  } catch(e) {
+    console.error('Supabase load failed:', e.message || e);
+    return false;
+  }
+}
+
+function applyUploadedData(filename, savedAtStr){
+  window._securities = window.SECURITIES_DATA;
+  window._lines = window.LINES_DATA;
+  window._portfolioDur = window.PORTFOLIO_DUR_DATA;
+  window._totalMV = window.TOTAL_MV_DATA;
+  const sub = savedAtStr
+    ? filename + ' · saved ' + savedAtStr
+    : filename + ' · ' + new Date().toLocaleDateString();
+  document.getElementById('portfolio-subtitle').textContent = sub;
+  renderMetrics();
+  renderPortfolioMetrics();
+  renderDurationTable();
+  renderPortfolioTable();
+  rebuildIssuerFilter();
+  rebuildCurrencyFilter();
+  document.getElementById('portfolio-metrics').style.display = 'none';
+  selStrategy = null; selScenario = null; selCurrencies = new Set(['ALL']); selIssuers = new Set(['ALL']); selIsins.clear();
+  renderStrategies();
+  renderScenarios();
+  document.getElementById('strategy-detail').style.display='none';
+  document.getElementById('scenario-detail').style.display='none';
+  document.getElementById('btn-to-scenario').disabled=true;
+  document.getElementById('btn-to-matrix').disabled=true;
+}
+</script>
+
 // Test Supabase connectivity on load
 async function testSupabaseConnection(){
   try {
@@ -1774,104 +1876,3 @@ function formatDate(val){
   return s;
 }
 
-const SUPABASE_URL = 'https://cjwznmdecngiuywaiddh.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNqd3pubWRlY25naXV5d2FpZGRoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYwNzU5ODQsImV4cCI6MjA5MTY1MTk4NH0.r3Sc83y2WJj55OctH90EmseP_dhNRc-IykaMX6wFH2o';
-
-async function saveToStorage(filename){
-  try {
-    const payload = {
-      filename: filename,
-      savedAt: new Date().toISOString(),
-      securities: window.SECURITIES_DATA,
-      lines: window.LINES_DATA,
-      portfolioDur: window.PORTFOLIO_DUR_DATA,
-      totalMV: window.TOTAL_MV_DATA,
-      isinCurrency: window._isinCurrency,
-      isinIssuer: window._isinIssuer,
-      currencyData: window._currencyData,
-      portDurAll: window._portDurAll,
-      portModDurAll: window._portModDurAll,
-      fxUSD: window._fxUSD,
-      fxEUR: window._fxEUR,
-      fxGBP: window._fxGBP,
-    };
-    const json = JSON.stringify(payload);
-    if(json.length > 4900000){ console.warn('Data too large'); return false; }
-    const res = await fetch(SUPABASE_URL + '/rest/v1/portfolio_data', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': SUPABASE_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_KEY,
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({id:'main', data: payload, updated_at: new Date().toISOString()})
-    });
-    if(!res.ok){ const t = await res.text(); console.error('Supabase save error:', res.status, t); }
-    return res.ok;
-  } catch(e) {
-    console.error('Supabase save failed:', e.message || e);
-    return false;
-  }
-}
-
-async function loadFromStorage(){
-  try {
-    const res = await fetch(SUPABASE_URL + '/rest/v1/portfolio_data?id=eq.main&select=data,updated_at', {
-      headers: {
-        'apikey': SUPABASE_KEY,
-        'Authorization': 'Bearer ' + SUPABASE_KEY
-      }
-    });
-    if(!res.ok) return false;
-    const rows = await res.json();
-    if(!rows || rows.length === 0 || !rows[0].data) return false;
-    const d = rows[0].data;
-    if(!d.securities || d.securities.length === 0) return false;
-    window.SECURITIES_DATA  = d.securities;
-    window.LINES_DATA       = d.lines;
-    window.PORTFOLIO_DUR_DATA = d.portfolioDur;
-    window.TOTAL_MV_DATA    = d.totalMV;
-    window._isinCurrency    = d.isinCurrency;
-    window._isinIssuer      = d.isinIssuer;
-    window._currencyData    = d.currencyData;
-    window._portDurAll      = d.portDurAll;
-    window._portModDurAll   = d.portModDurAll;
-    window._fxUSD           = d.fxUSD;
-    window._fxEUR           = d.fxEUR;
-    window._fxGBP           = d.fxGBP;
-    const savedAt = new Date(d.savedAt);
-    const dateStr = savedAt.toLocaleDateString() + ' ' + savedAt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
-    applyUploadedData(d.filename, dateStr);
-    return true;
-  } catch(e) {
-    console.error('Supabase load failed:', e.message || e);
-    return false;
-  }
-}
-
-function applyUploadedData(filename, savedAtStr){
-  window._securities = window.SECURITIES_DATA;
-  window._lines = window.LINES_DATA;
-  window._portfolioDur = window.PORTFOLIO_DUR_DATA;
-  window._totalMV = window.TOTAL_MV_DATA;
-  const sub = savedAtStr
-    ? filename + ' · saved ' + savedAtStr
-    : filename + ' · ' + new Date().toLocaleDateString();
-  document.getElementById('portfolio-subtitle').textContent = sub;
-  renderMetrics();
-  renderPortfolioMetrics();
-  renderDurationTable();
-  renderPortfolioTable();
-  rebuildIssuerFilter();
-  rebuildCurrencyFilter();
-  document.getElementById('portfolio-metrics').style.display = 'none';
-  selStrategy = null; selScenario = null; selCurrencies = new Set(['ALL']); selIssuers = new Set(['ALL']); selIsins.clear();
-  renderStrategies();
-  renderScenarios();
-  document.getElementById('strategy-detail').style.display='none';
-  document.getElementById('scenario-detail').style.display='none';
-  document.getElementById('btn-to-scenario').disabled=true;
-  document.getElementById('btn-to-matrix').disabled=true;
-}
-</script>
